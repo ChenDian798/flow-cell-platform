@@ -1,7 +1,7 @@
 'use client';
 import dynamic from 'next/dynamic';
 import { useEffect, useReducer, useState } from 'react';
-import { Action, CELL, cellFill, Config, DEFAULTS, FLUID_INFO, FLUIDS, MIX_COLOR, Machine, PLATE, SPOT_COUNT, configErrors, configWarnings, contentColor, cycle, cycleSeconds, disabledReason, formatTime, initial, request, runSeconds, spotPosition, status, tick, togglePause } from '@/lib/system';
+import { Action, cellFill, Config, DEFAULTS, DESIGNS, DesignId, FLUID_INFO, FLUIDS, MIX_COLOR, Machine, configErrors, configWarnings, contentColor, cycle, cycleSeconds, defaultsFor, designOf, disabledReason, formatTime, initial, request, runSeconds, spotCount, spotPosition, status, tick, togglePause } from '@/lib/system';
 import type { CameraView } from './Scene';
 import Schematic from './Schematic';
 import Mounting from './Mounting';
@@ -18,12 +18,12 @@ function reducer(m: Machine, e: Event): Machine {
 const SPEEDS = [60, 300, 1200];
 
 function SpotMap({ machine }: { machine: Machine }) {
-  const active = machine.queue[0]?.spot ?? machine.spot;
-  const cells = Array.from({ length: SPOT_COUNT }, (_, i) => ({ i, pos: spotPosition(i) })).sort((a, b) => a.pos[1] - b.pos[1] || a.pos[0] - b.pos[0]);
-  return <div className="spot-map" aria-label="Plate spot map">{cells.map(({ i }) => <span key={i} className={`${machine.done[i] ? 'done' : ''} ${i === active ? 'active' : ''} ${i >= machine.config.spots ? 'unused' : ''}`}>{i + 1}</span>)}</div>;
+  const active = machine.queue[0]?.spot ?? machine.spot, d = designOf(machine.config);
+  const cells = Array.from({ length: spotCount(d) }, (_, i) => ({ i, pos: spotPosition(i, d) })).sort((a, b) => a.pos[1] - b.pos[1] || a.pos[0] - b.pos[0]);
+  return <div className="spot-map" style={{ gridTemplateColumns: `repeat(${d.plate.grid}, 1fr)` }} aria-label="Plate spot map">{cells.map(({ i }) => <span key={i} className={`${machine.done[i] ? 'done' : ''} ${i === active ? 'active' : ''} ${i >= machine.config.spots ? 'unused' : ''}`}>{i + 1}</span>)}</div>;
 }
 function Operate({ machine, act, pause, reset, speed, setSpeed }: { machine: Machine; act: (a: Action) => void; pause: () => void; reset: () => void; speed: number; setSpeed: (s: number) => void }) {
-  const st = status(machine), step = st.step, inCell = cellFill(machine).content;
+  const st = status(machine), step = st.step, inCell = cellFill(machine).content, { plate } = designOf(machine.config);
   const rows: [string, string][] = [
     ['Current step', step ? step.name : 'Idle'], ['Step time left', step ? formatTime(step.seconds - machine.elapsed) : '—'],
     ['Pumps', st.flowing ? 'ON' : 'OFF'], ['Outlet valve', st.outlet],
@@ -42,12 +42,13 @@ function Operate({ machine, act, pause, reset, speed, setSpeed }: { machine: Mac
     <p className="footnote">One cycle per spot: seal → deposit (flow) → rinse → fill UPD → CV / EIS (static) → rinse → drain with air → lower plate → move. Real time per spot ≈ <b>{formatTime(cycleSeconds(machine.config))}</b>; all {machine.config.spots} spots ≈ <b>{formatTime(runSeconds(machine.config))}</b>.</p>
     <h3>Live state</h3>
     <dl className="status-grid">{rows.map(([k, v]) => <div key={k}><dt>{k}</dt><dd className={['ON', 'WASTE', 'DEPOSITION', 'CV / EIS', 'SEALED'].includes(v) ? 'on' : ''}>{v}</dd></div>)}</dl>
-    <h3>Plate · {PLATE.grid} × {PLATE.grid} spots</h3>
+    <h3>Plate · {plate.grid} × {plate.grid} spots</h3>
     <SpotMap machine={machine}/>
-    <p className="footnote">Purple: deposited. Ring: current spot. Order is serpentine, so every move is one {PLATE.pitch} mm step.</p>
+    <p className="footnote">Purple: deposited. Ring: current spot. Order is serpentine, so every move is one {plate.pitch} mm step.</p>
   </div>;
 }
-const FIELDS: { key: keyof Config; label: string; unit: string; step: number }[] = [
+type NumberKey = Exclude<keyof Config, 'design'>;
+const fields = (spots: number): { key: NumberKey; label: string; unit: string; step: number }[] => [
   { key: 'depFlow', label: 'Deposition flow (total)', unit: 'μL/min', step: 10 },
   { key: 'fracA', label: 'Stock A fraction', unit: '0–1', step: .05 },
   { key: 'fracB', label: 'Stock B fraction', unit: '0–1', step: .05 },
@@ -57,17 +58,17 @@ const FIELDS: { key: keyof Config; label: string; unit: string; step: number }[]
   { key: 'updVolume', label: 'UPD fill volume', unit: 'μL', step: 100 },
   { key: 'analysisTime', label: 'CV / EIS time', unit: 'min', step: 1 },
   { key: 'drainTime', label: 'Air drain time', unit: 's', step: 5 },
-  { key: 'spots', label: 'Spots to run', unit: `1–${SPOT_COUNT}`, step: 1 }
+  { key: 'spots', label: 'Spots to run', unit: `1–${spots}`, step: 1 }
 ];
 function Parameters({ config, locked, change }: { config: Config; locked: boolean; change: (c: Config) => void }) {
   const [draft, setDraft] = useState(config);
   useEffect(() => setDraft(config), [config]);
   const errors = configErrors(draft), warnings = configWarnings(draft);
-  const water = 1 - draft.fracA - draft.fracB;
+  const water = 1 - draft.fracA - draft.fracB, d = designOf(draft);
   return <div>
     <p className="panel-copy">Placeholder values for a first water test, not a validated recipe. Editing resets the run. Water makes up the rest of the deposition feed, which sets the stock concentrations in the cell.</p>
     <fieldset className="parameter-fields" disabled={locked}>
-      {FIELDS.map(f => <label key={f.key}>{f.label}<div><input type="number" step={f.step} value={draft[f.key]} onChange={e => setDraft({ ...draft, [f.key]: Number(e.target.value) })}/><small>{f.unit}</small></div></label>)}
+      {fields(spotCount(d)).map(f => <label key={f.key}>{f.label}<div><input type="number" step={f.step} value={draft[f.key]} onChange={e => setDraft({ ...draft, [f.key]: Number(e.target.value) })}/><small>{f.unit}</small></div></label>)}
       <button className="primary" disabled={errors.length > 0} onClick={() => change(draft)}>Apply parameters</button>
     </fieldset>
     {locked && <p className="footnote">Locked while a sequence is loaded. Reset first.</p>}
@@ -77,8 +78,8 @@ function Parameters({ config, locked, change }: { config: Config; locked: boolea
         <div><dt>Stock A in cell</dt><dd>{(draft.fracA * 100).toFixed(0)}% of stock</dd></div>
         <div><dt>Stock B in cell</dt><dd>{(draft.fracB * 100).toFixed(0)}% of stock</dd></div>
         <div><dt>Water (diluent)</dt><dd>{(Math.max(0, water) * 100).toFixed(0)}%</dd></div>
-        <div><dt>Cell volume (v1)</dt><dd>≈{CELL.volume} μL</dd></div>
-        <div><dt>Cell volumes per rinse</dt><dd>{(draft.rinseVolume / CELL.volume).toFixed(1)}×</dd></div>
+        <div><dt>Cell volume ({d.id})</dt><dd>≈{d.cell.volume} μL</dd></div>
+        <div><dt>Cell volumes per rinse</dt><dd>{(draft.rinseVolume / d.cell.volume).toFixed(1)}×</dd></div>
       </dl>
       {(errors.length > 0 || warnings.length > 0) && <ul>{[...errors, ...warnings].map(t => <li key={t}>{t}</li>)}</ul>}
     </div>
@@ -111,6 +112,15 @@ function DesignNotes() {
     </ul>
   </div>;
 }
+// Switches cell, plate and mount geometry for every panel; the run resets with that design's default parameters.
+function DesignSwitch({ machine, change }: { machine: Machine; change: (id: DesignId) => void }) {
+  const locked = machine.queue.length > 0, d = designOf(machine.config);
+  return <div className="design-switch">
+    <span className="micro">CELL DESIGN</span>
+    <div className="segmented">{(Object.keys(DESIGNS) as DesignId[]).map(id => <button key={id} disabled={locked && id !== d.id} className={d.id === id ? 'selected' : ''} onClick={() => id !== d.id && change(id)}>{DESIGNS[id].short}</button>)}</div>
+    <span className="design-facts">{d.cell.bodyW} × {d.cell.bodyW} mm body · {d.cell.area} cm² per spot · {d.plate.grid} × {d.plate.grid} spots at {d.plate.pitch} mm · CAD: {d.scripts}{locked ? ' · reset to switch' : ''}</span>
+  </div>;
+}
 function Sequence({ machine }: { machine: Machine }) {
   const step = machine.queue[0], spot = step?.spot ?? machine.spot;
   const steps = cycle(machine.config, spot, spot === machine.config.spots - 1);
@@ -137,11 +147,13 @@ export default function Platform() {
     const advance = (now: number) => { dispatch({ type: 'tick', dt: Math.min(.1, (now - last) / 1000) * speed }); last = now; frame = requestAnimationFrame(advance); };
     frame = requestAnimationFrame(advance); return () => cancelAnimationFrame(frame);
   }, [running, speed]);
+  const d = designOf(machine.config);
   const legend: [string, string][] = [...FLUIDS.filter(f => f !== 'Air').map(f => [FLUID_INFO[f].name, FLUID_INFO[f].color] as [string, string]), ['Deposition mix', MIX_COLOR], ['Air', contentColor('Air')]];
   return <main className="instrument">
     <header className="header"><div className="brand-mark"><span/><span/><span/></div><div className="brand">REACTOR LAB <span>CONCEPT INSTRUMENT / 02</span></div></header>
-    <div className="title-row"><div><p className="eyebrow">FLOW CELL · IN-SITU RAMAN · 16-SPOT PLATE</p><h1>Single Flow Cell<br/><span>& Spot-by-Spot Fluidics</span></h1><p className="subtitle">Four reservoirs and an air line on separate pump channels, one manifold, a fixed cell and a plate that moves one spot per cycle.</p></div><div className="prototype-badge"><span className="status-dot"/> CONCEPTUAL PROTOTYPE <small>FLUIDIC LAYOUT · NOT TO SCALE</small></div></div>
+    <div className="title-row"><div><p className="eyebrow">FLOW CELL · IN-SITU RAMAN · {spotCount(d)}-SPOT PLATE</p><h1>Single Flow Cell<br/><span>& Spot-by-Spot Fluidics</span></h1><p className="subtitle">Four reservoirs and an air line on separate pump channels, one manifold, a fixed cell and a plate that moves one spot per cycle.</p></div><div className="prototype-badge"><span className="status-dot"/> CONCEPTUAL PROTOTYPE <small>FLUIDIC LAYOUT · NOT TO SCALE</small></div></div>
     <div className="notice">Conceptual model of the tubing layout and sequence. Sizes, mounting, flow rates and timings are placeholders and need experimental validation.</div>
+    <DesignSwitch machine={machine} change={id => dispatch({ type: 'config', config: defaultsFor(id) })}/>
     <div className="workspace">
       <section className="panel model-panel">
         <div className="panel-heading"><h2><span className="section-number">01</span> Platform model</h2><span className={`state-pill ${running ? 'running' : ''}`}>{machine.paused ? 'PAUSED' : running ? 'SEQUENCE RUNNING' : 'STANDBY'}</span></div>
@@ -161,6 +173,6 @@ export default function Platform() {
     <Schematic machine={machine}/>
     <Mounting machine={machine}/>
     <Sequence machine={machine}/>
-    <footer><p><b>Flow cell v1</b> · Ø{CELL.chamberD} mm chamber, {CELL.liquidHeight} mm liquid height, ≈{CELL.area} cm² working area per spot.</p><p>Idealized sequence for layout discussion. No flow, mixing or electrochemistry is simulated.</p></footer>
+    <footer><p><b>{d.name}</b> · Ø{d.cell.chamberD} mm chamber, {d.cell.liquidHeight} mm liquid height, ≈{d.cell.area} cm² working area per spot.</p><p>Idealized sequence for layout discussion. No flow, mixing or electrochemistry is simulated.</p></footer>
   </main>;
 }

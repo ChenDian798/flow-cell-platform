@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
-import { CELL, FLUID_INFO, Fluid, INLET_ORDER, Machine, PLATE, SPOT_COUNT, cellFill, contentColor, feedContent, platePose, spotPosition, status } from '@/lib/system';
+import { FLUID_INFO, Fluid, INLET_ORDER, Machine, cellFill, contentColor, designOf, feedContent, platePose, spotCount, spotPosition, status } from '@/lib/system';
 import { Box, Cylinder, HolePlate, Label, Pipe, Vec3 } from './ModelPrimitives';
 
 export type CameraView = 'iso' | 'top' | 'side' | 'cell';
@@ -15,36 +15,37 @@ const MANIFOLD = { from: 90, to: 152 };
 const PUMP_Z = -45, RESERVOIR_Z = -82;
 const POTENTIOSTAT: Vec3 = [-75, 0, 80];
 
-function CameraRig({ view }: { view: CameraView }) {
+function CameraRig({ view, cellScale }: { view: CameraView; cellScale: number }) {
   const { camera, controls } = useThree();
   useEffect(() => {
     const [pos, target]: [Vec3, Vec3] = view === 'top' ? [[25, 330, 1], [25, 0, -5]]
       : view === 'side' ? [[25, 25, 270], [25, 5, 0]]
-      : view === 'cell' ? [[62, 16, 58], [0, 3, 0]]
+      : view === 'cell' ? [[62 * cellScale, 16 * cellScale, 58 * cellScale], [0, 3, 0]]
       : [[200, 165, 215], [25, -5, -5]];
     camera.position.set(...pos); camera.lookAt(...target);
     if (controls && 'target' in controls) { const orbit = controls as unknown as { target: THREE.Vector3; update: () => void }; orbit.target.set(...target); orbit.update(); }
-  }, [camera, controls, view]);
+  }, [camera, controls, view, cellScale]);
   return null;
 }
 
-// Fixed flow cell (cell_v1): contact boss, body with port towers, quartz window, retainer, CE / RE wires.
+// Fixed flow cell (cell_v1 or cell_debug): contact boss, body with port towers, quartz window, retainer, CE / RE wires.
 export function FlowCell({ machine, labels }: { machine: Machine; labels: boolean }) {
-  const fill = cellFill(machine), st = status(machine);
-  const h = CELL.liquidHeight * fill.level, echem = st.echem !== 'OFF';
+  const fill = cellFill(machine), st = status(machine), d = designOf(machine.config), c = d.cell;
+  const h = c.liquidHeight * fill.level, echem = st.echem !== 'OFF';
+  const half = c.bodyW / 2, r = c.chamberD / 2, windowTop = c.liquidHeight + c.windowT;
   return <group>
-    <Cylinder position={[0, .6, 0]} radius={10} height={1.2} color="#8a929b" opacity={.45}/>
-    <Box position={[0, 3.225, 0]} size={[40, 4.05, 40]} color="#8a929b" opacity={.35}/>
-    {[-1, 1].map(s => <Box key={s} position={[s * 17.25, 3.85, 0]} size={[5.5, 5.3, 10]} color="#8a929b" opacity={.45}/>)}
-    <Cylinder position={[0, 4.9, 0]} radius={10} height={1} color="#cfefff" opacity={.45}/>
-    <HolePlate y={5.4} width={28} t={2} hole={14} color="#4d525c" opacity={.85}/>
-    {h > .02 && <Cylinder position={[0, h / 2, 0]} radius={CELL.chamberD / 2 - .05} height={h} color={contentColor(fill.content)} opacity={.85}/>}
-    <Pipe points={[[0, 2.15, 6], [0, 2.15, 20], [0, 2.15, 32]]} radius={.35} color={echem ? '#cfa53a' : '#b8bec4'}/>
-    <Pipe points={[[0, 2.15, -6], [0, 2.15, -20], [0, 2.15, -32]]} radius={.45} color={echem ? '#cfa53a' : '#8c7a63'}/>
+    <Cylinder position={[0, c.underside / 2, 0]} radius={c.bossD / 2} height={c.underside} color="#8a929b" opacity={.45}/>
+    <Box position={[0, (c.underside + c.bodyTop) / 2, 0]} size={[c.bodyW, c.bodyTop - c.underside, c.bodyW]} color="#8a929b" opacity={.35}/>
+    {[-1, 1].map(s => <Box key={s} position={[s * (c.towerStart + half) / 2, (c.underside + c.towerTop) / 2, 0]} size={[half - c.towerStart, c.towerTop - c.underside, 10]} color="#8a929b" opacity={.45}/>)}
+    <Cylinder position={[0, c.liquidHeight + c.windowT / 2, 0]} radius={c.windowD / 2} height={c.windowT} color="#cfefff" opacity={.45}/>
+    <HolePlate y={windowTop} width={c.retainerW} t={c.retainerT} hole={c.aperture} color="#4d525c" opacity={.85}/>
+    {h > .02 && <Cylinder position={[0, h / 2, 0]} radius={r - .05} height={h} color={contentColor(fill.content)} opacity={.85}/>}
+    <Pipe points={[[0, 2.15, r], [0, 2.15, half], [0, 2.15, half + 12]]} radius={.35} color={echem ? '#cfa53a' : '#b8bec4'}/>
+    <Pipe points={[[0, 2.15, -r], [0, 2.15, -half], [0, 2.15, -half - 12]]} radius={.45} color={echem ? '#cfa53a' : '#8c7a63'}/>
     {labels && <>
-      <Label position={[0, 2, 44]} scale={1.2}>Counter electrode (CE)</Label>
-      <Label position={[0, 2, -44]} scale={1.2}>Reference electrode (RE)</Label>
-      <Label position={[-34, 16, 18]} scale={1.3} accent>Flow cell v1 · fixed<br/>Ø{CELL.chamberD} mm · ≈{CELL.volume} μL</Label>
+      <Label position={[0, 2, half + 24]} scale={1.2}>Counter electrode (CE)</Label>
+      <Label position={[0, 2, -half - 24]} scale={1.2}>Reference electrode (RE)</Label>
+      <Label position={[-half - 14, 16, 18]} scale={1.3} accent>{d.name} · fixed<br/>Ø{c.chamberD} mm · ≈{c.volume} μL</Label>
     </>}
   </group>;
 }
@@ -57,31 +58,32 @@ function Raman({ labels }: { labels: boolean }) {
     {labels && <Label position={[0, 72, 0]} scale={1.3}>Raman spectrometer + objective<br/>removed from enclosure · fixed</Label>}
   </group>;
 }
-// Working-electrode plate (top face at y = 0) with its 4 × 4 spots: purple when deposited, ring on the active spot.
+// Working-electrode plate (top face at y = 0) with its spot grid: purple when deposited, ring on the active spot.
 export function SpotPlate({ machine }: { machine: Machine }) {
   const active = machine.queue.length > 0 ? machine.queue[0].spot : machine.spot;
+  const d = designOf(machine.config), r = d.cell.chamberD / 2;
   return <group>
-    <Box position={[0, -1.5, 0]} size={[PLATE.size, 3, PLATE.size]} color="#59626b"/>
-    {Array.from({ length: SPOT_COUNT }, (_, i) => {
-      const [sx, sz] = spotPosition(i), done = machine.done[i];
+    <Box position={[0, -1.5, 0]} size={[d.plate.size, 3, d.plate.size]} color="#59626b"/>
+    {Array.from({ length: spotCount(d) }, (_, i) => {
+      const [sx, sz] = spotPosition(i, d), done = machine.done[i];
       return <group key={i}>
-        <Cylinder position={[sx, .06, sz]} radius={6} height={.12} color={done ? '#7a5aa6' : '#8d969e'}/>
-        {i === active && <mesh position={[sx, .14, sz]} rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[7.3, 8.3, 48]}/><meshBasicMaterial color="#00b3ad"/></mesh>}
+        <Cylinder position={[sx, .06, sz]} radius={r} height={.12} color={done ? '#7a5aa6' : '#8d969e'}/>
+        {i === active && <mesh position={[sx, .14, sz]} rotation={[-Math.PI / 2, 0, 0]}><ringGeometry args={[r + 1.3, r + 2.3, 48]}/><meshBasicMaterial color="#00b3ad"/></mesh>}
       </group>;
     })}
   </group>;
 }
 // Working-electrode plate on the motorized XYZ stage; the stage moves, the cell does not.
 function PlateStage({ machine, labels }: { machine: Machine; labels: boolean }) {
-  const [x, y, z] = platePose(machine);
+  const [x, y, z] = platePose(machine), { plate } = designOf(machine.config);
   return <group>
     <group position={[x, y, z]}>
       <SpotPlate machine={machine}/>
-      <Box position={[0, -7, 0]} size={[130, 8, 130]} color="#c4ccd2"/>
+      <Box position={[0, -7, 0]} size={[plate.size + 20, 8, plate.size + 20]} color="#c4ccd2"/>
     </group>
-    <Box position={[0, -22, 0]} size={[210, 10, 210]} color="#dde4e9"/>
+    <Box position={[0, -22, 0]} size={[plate.size + 100, 10, plate.size + 100]} color="#dde4e9"/>
     {labels && <>
-      <Label position={[x - 40, y - 14, z + 72]} scale={1.3}>WE plate · 4 × 4 spots · {PLATE.pitch} mm pitch</Label>
+      <Label position={[x - 40, y - 14, z + plate.size / 2 + 17]} scale={1.3}>WE plate · {plate.grid} × {plate.grid} spots · {plate.pitch} mm pitch</Label>
       <Label position={[95, -24, 95]} scale={1.3}>Motorized XYZ stage · moves the plate</Label>
     </>}
   </group>;
@@ -103,7 +105,7 @@ function Bottle({ position, color, label }: { position: Vec3; color: string; lab
 }
 // Reservoirs → one peristaltic channel each → inlet check valve → manifold → static mixer → cell inlet.
 function Delivery({ machine, labels }: { machine: Machine; labels: boolean }) {
-  const st = status(machine), lineColor = contentColor(feedContent(st.pumps) ?? machine.line);
+  const st = status(machine), lineColor = contentColor(feedContent(st.pumps) ?? machine.line), half = designOf(machine.config).cell.bodyW / 2;
   const mixer: Vec3[] = Array.from({ length: 9 }, (_, i) => [48 + i * 4, LINE_Y, i % 2 ? 4 : -4]);
   return <group>
     {INLET_ORDER.map(f => {
@@ -124,7 +126,7 @@ function Delivery({ machine, labels }: { machine: Machine; labels: boolean }) {
     <Pipe points={[[MANIFOLD.from, LINE_Y, 0], [86, LINE_Y, 0], [82, LINE_Y, -4]]} color={lineColor} radius={.8}/>
     <Pipe points={[[82, LINE_Y, -4], ...[...mixer].reverse(), [44, LINE_Y, 0]]} color={lineColor} radius={.8}/>
     <Box position={[64, LINE_Y, 0]} size={[40, 6, 14]} color="#e8eef2" opacity={.35}/>
-    <Pipe points={[[44, LINE_Y, 0], [32, LINE_Y, 0], [20, LINE_Y, 0]]} color={lineColor} radius={.8}/>
+    <Pipe points={[[44, LINE_Y, 0], [(44 + half) / 2, LINE_Y, 0], [half, LINE_Y, 0]]} color={lineColor} radius={.8}/>
     {labels && <>
       <Label position={[121, 14, PUMP_Z - 2]} scale={1.3} accent={st.flowing}>5-channel peristaltic pump · {st.flowing ? 'ON' : 'OFF'}</Label>
       <Label position={[121, 12, 9]} scale={1.3}>Manifold · inlet check valves<br/>head: air → water → UPD → B → A</Label>
@@ -134,10 +136,10 @@ function Delivery({ machine, labels }: { machine: Machine; labels: boolean }) {
 }
 // Cell outlet → outlet valve → waste. The valve closes for static steps.
 function Outlet({ machine, labels }: { machine: Machine; labels: boolean }) {
-  const st = status(machine), open = st.outlet === 'WASTE';
+  const st = status(machine), open = st.outlet === 'WASTE', half = designOf(machine.config).cell.bodyW / 2;
   const color = open && st.flowing ? contentColor(cellFill(machine).content) : IDLE;
   return <group>
-    <Pipe points={[[-20, LINE_Y, 0], [-35, LINE_Y, 0], [-50, LINE_Y, 0]]} color={color} radius={.8} opacity={open ? 1 : .6}/>
+    <Pipe points={[[-half, LINE_Y, 0], [(-half - 50) / 2, LINE_Y, 0], [-50, LINE_Y, 0]]} color={color} radius={.8} opacity={open ? 1 : .6}/>
     <Box position={[-55, LINE_Y, 0]} size={[9, 9, 9]} color={open ? '#007b79' : '#7e929f'}/>
     <Pipe points={[[-59.5, LINE_Y, 0], [-75, 12, 0], [-92, 18, 0]]} color={open ? color : IDLE} radius={.8} opacity={open ? 1 : .6}/>
     <Bottle position={[-98, 0, 0]} color="#a2937d"/>
@@ -148,15 +150,15 @@ function Outlet({ machine, labels }: { machine: Machine; labels: boolean }) {
   </group>;
 }
 function Potentiostat({ machine, labels }: { machine: Machine; labels: boolean }) {
-  const st = status(machine), on = st.echem !== 'OFF', [x, y, z] = platePose(machine);
+  const st = status(machine), on = st.echem !== 'OFF', [x, y, z] = platePose(machine), d = designOf(machine.config), ce = d.cell.bodyW / 2 + 12;
   const wire = on ? '#cfa53a' : '#9aa5ad';
   const [px, py, pz] = POTENTIOSTAT;
   return <group>
     <Box position={POTENTIOSTAT} size={[50, 18, 30]} color={on ? '#d8eeea' : '#eef2f4'}/>
     <Box position={[px, py + 9.2, pz]} size={[40, .4, 20]} color={on ? '#007b79' : '#9aa7b1'}/>
-    <Pipe points={[[0, 2.15, 32], [-10, 6, 52], [-50, 6, 68], [px + 10, py + 2, pz - 15]]} color={wire} radius={.35}/>
-    <Pipe points={[[0, 2.15, -32], [-40, 6, -52], [-130, 6, -10], [-120, 6, 70], [px - 20, py + 2, pz - 10]]} color={wire} radius={.35}/>
-    <Pipe points={[[x - PLATE.size / 2, y - 1.5, z + PLATE.size / 2 - 5], [x - PLATE.size / 2 - 8, y - 2, z + PLATE.size / 2 + 5], [px - 5, py - 6, pz - 15]]} color={wire} radius={.35}/>
+    <Pipe points={[[0, 2.15, ce], [-10, 6, ce + 20], [-50, 6, 68], [px + 10, py + 2, pz - 15]]} color={wire} radius={.35}/>
+    <Pipe points={[[0, 2.15, -ce], [-40, 6, -ce - 20], [-130, 6, -10], [-120, 6, 70], [px - 20, py + 2, pz - 10]]} color={wire} radius={.35}/>
+    <Pipe points={[[x - d.plate.size / 2, y - 1.5, z + d.plate.size / 2 - 5], [x - d.plate.size / 2 - 8, y - 2, z + d.plate.size / 2 + 5], [px - 5, py - 6, pz - 15]]} color={wire} radius={.35}/>
     {labels && <Label position={[px, py + 20, pz]} scale={1.3} accent={on}>Potentiostat · {st.echem}<br/>WE plate · CE · RE</Label>}
   </group>;
 }
@@ -172,6 +174,6 @@ export default function Scene({ machine, view, labels }: { machine: Machine; vie
     <Outlet machine={machine} labels={labels}/>
     <Potentiostat machine={machine} labels={labels}/>
     <OrbitControls makeDefault minDistance={20} maxDistance={700}/>
-    <CameraRig view={view}/>
+    <CameraRig view={view} cellScale={designOf(machine.config).cell.bodyW / 40}/>
   </Canvas>;
 }

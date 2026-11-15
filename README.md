@@ -51,6 +51,8 @@ To stop it, press `Ctrl + C` in the terminal. Next time, only `npm run dev` is n
 
 ## What the page shows
 
+The **Cell design** switch under the notice picks the geometry for every panel: **v1** (Ø12 mm chamber, 4 × 4 spots at 25 mm, from `cell_v1.py` + `mount_v1.py`) or **debug** (Ø24 mm chamber for easier viewing, 3 × 3 spots at 40 mm, from `cell_debug.py` + `mount_debug.py`). Switching resets the run and loads that design's default rinse and fill volumes.
+
 | Panel | Content |
 | --- | --- |
 | **01 Platform model** | 3D view of the whole platform: reservoirs, pump, manifold, static mixer, the fixed flow cell under the Raman objective, the outlet valve, the potentiostat, and the plate on the motorized stage. The side panel runs the sequence and holds the parameters and design notes. |

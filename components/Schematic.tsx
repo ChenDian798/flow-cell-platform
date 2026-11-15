@@ -1,5 +1,5 @@
 'use client';
-import { FLUID_INFO, INLET_ORDER, Machine, cellFill, contentColor, feedContent, status } from '@/lib/system';
+import { FLUID_INFO, INLET_ORDER, Machine, cellFill, contentColor, designOf, feedContent, status } from '@/lib/system';
 
 // 2D connection diagram. Channels are drawn in manifold order so the head (air) is at the left and the outlet at the right.
 const CH_X = (i: number) => 70 + i * 85;
@@ -42,7 +42,7 @@ export default function Schematic({ machine }: { machine: Machine }) {
       <g><title>Raman objective, fixed above the quartz window</title>
         <path d="M 640 150 H 670 L 664 192 H 646 Z" fill="#3a4148"/><text x={655} y={140} textAnchor="middle">Raman objective (fixed)</text>
       </g>
-      <g><title>Flow cell v1: fixed; sealed against the plate by the bottom O-ring</title>
+      <g><title>{`${designOf(machine.config).name}: fixed; sealed against the plate by the bottom O-ring`}</title>
         <rect x={610} y={205} width={90} height={50} rx={3} fill="#e7ebee" stroke="#607989"/>
         <rect x={632} y={198} width={46} height={6} fill="#cfefff" stroke="#8fb9cf"/>
         <rect x={635} y={205} width={40} height={50} fill="white" stroke="#9aa7b1"/>
@@ -71,7 +71,7 @@ export default function Schematic({ machine }: { machine: Machine }) {
     <div className="delivery-state">
       <span>Pumping: <b>{st.flowing ? Object.entries(st.pumps).map(([f, q]) => `${f} ${q!.toFixed(0)}`).join(' · ') + ' μL/min' : 'none'}</b></span>
       <span>Outlet valve: <b>{st.outlet}</b></span><span>Potentiostat: <b>{st.echem}</b></span>
-      <span>Plate: <b>{machine.sealed ? 'SEALED' : 'LOWERED'}</b></span><span>Spot: <b>{machine.spot + 1} / 16</b></span>
+      <span>Plate: <b>{machine.sealed ? 'SEALED' : 'LOWERED'}</b></span><span>Spot: <b>{machine.spot + 1} / {machine.config.spots}</b></span>
     </div>
     <p className="footnote">Each reservoir has its own pump channel and inlet check valve, as in the earlier single-line design. Gas gaps and the Ar supply are gone: the cell finishes one spot before the next starts, so only one liquid is in the line at a time and a water rinse separates them. For deposition, stock A, stock B and water run together at a set ratio and meet in the static mixer, which sets the concentration in the cell. Air from the fifth channel empties the cell before the plate is lowered, so no liquid spills onto neighbouring spots. Schematic, not to scale.</p>
   </section>;

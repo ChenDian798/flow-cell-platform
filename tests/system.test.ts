@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULTS, PLATE, SPOT_COUNT, SPRING, configErrors, cycle, cycleSeconds, depositionFlows, disabledReason, initial, liftState, platePose, request, runSeconds, spotPosition, status, tick, togglePause } from '../lib/system';
+import { DEFAULTS, DESIGNS, SPRING, defaultsFor, spotCount, configErrors, cycle, cycleSeconds, depositionFlows, disabledReason, initial, liftState, platePose, request, runSeconds, spotPosition, status, tick, togglePause } from '../lib/system';
 
+const PLATE = DESIGNS.v1.plate, SPOT_COUNT = spotCount(DESIGNS.v1);
 const runToEnd = (m: ReturnType<typeof initial>) => tick(m, 1e9);
 
 test('deposition feed splits the total flow by stock fractions with water as diluent', () => {
@@ -77,4 +78,20 @@ test('invalid parameters block running', () => {
   assert.ok(configErrors(bad).length);
   assert.ok(disabledReason(initial(bad), 'spot'));
   assert.equal(request(initial(bad), 'spot').queue.length, 0);
+});
+
+test('the debug design uses its own spot grid, travel and cell-volume defaults', () => {
+  const d = DESIGNS.debug, c = defaultsFor('debug');
+  assert.equal(c.spots, 9);
+  assert.equal(initial(c).done.length, 9);
+  for (let i = 1; i < spotCount(d); i++) {
+    const [x1, z1] = spotPosition(i - 1, d), [x2, z2] = spotPosition(i, d);
+    assert.equal(Math.hypot(x2 - x1, z2 - z1), d.plate.pitch);
+  }
+  assert.deepEqual(spotPosition(8, d), [40, 40]);
+  assert.ok(c.rinseVolume >= 5 * d.cell.volume && c.updVolume >= 2 * d.cell.volume);
+  assert.equal(configErrors(c).length, 0);
+  assert.ok(configErrors({ ...c, spots: 16 }).length);
+  const m = runToEnd(request(initial(c), 'spot'));
+  assert.deepEqual(platePose(m), [-spotPosition(1, d)[0], -d.plate.lift, -spotPosition(1, d)[1]]);
 });
