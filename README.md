@@ -58,7 +58,8 @@ The **Cell design** switch under the notice picks the geometry for every panel: 
 | **01 Platform model** | 3D view of the whole platform: reservoirs, pump, manifold, static mixer, the fixed flow cell under the Raman objective, the outlet valve, the potentiostat, and the plate on the motorized stage. The side panel runs the sequence and holds the parameters and design notes. |
 | **02 Fluidic connection diagram** | 2D diagram of the same tubing. Lines and valves change colour as each liquid flows. |
 | **03 Mounting concept** | 3D view of the frame built from off-the-shelf parts (aluminium extrusion, manual Z stage for focusing, motorized XYZ stage, guided spring tray), with a parts list and search keywords. |
-| **04 Cycle at spot** | Timeline of the steps at the current spot, and a log. |
+| **04 Computer control** | How the PC runs the platform: the potentiostat and spectrometer over USB with vendor SDKs, and a controller board (MCU) that drives the stage, pumps and outlet valve and reads the switches and sensors. Shows the commands the PC sends at the current step, with a switch for stepper pump heads or commercial RS485 pumps, and a parts list. |
+| **05 Cycle at spot** | Timeline of the steps at the current spot, and a log. |
 
 All panels follow one clock, so starting the sequence in panel 01 also moves the plate in panel 03.
 
@@ -97,6 +98,6 @@ npm run build      # production build
 
 Next.js 16.4.0 reports a known security advisory. The first `npm run build` may stop at that notice; running it again continues. Upgrading Next.js removes the notice.
 
-The model logic (fluids, cycle steps, clock, plate and spring positions) is in `lib/system.ts`. The 3D scenes are in `components/Scene.tsx` and `components/MountScene.tsx`, and the 2D diagram is in `components/Schematic.tsx`.
+The model logic (fluids, cycle steps, clock, plate and spring positions) is in `lib/system.ts`. The 3D scenes are in `components/Scene.tsx` and `components/MountScene.tsx`, the 2D diagram is in `components/Schematic.tsx`, and the control panel is `components/Control.tsx` with its logic in `lib/control.ts`.
 
 Pushing to the `main` branch deploys to https://flow-cell-platform.vercel.app automatically.

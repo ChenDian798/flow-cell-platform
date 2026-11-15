@@ -5,6 +5,7 @@ import { Action, cellFill, Config, DEFAULTS, DESIGNS, DesignId, FLUID_INFO, FLUI
 import type { CameraView } from './Scene';
 import Schematic from './Schematic';
 import Mounting from './Mounting';
+import Control from './Control';
 const Scene = dynamic(() => import('./Scene'), { ssr: false, loading: () => <div className="scene-loading">Initializing platform geometry…</div> });
 
 type Event = { type: 'tick'; dt: number } | { type: 'action'; action: Action } | { type: 'pause' } | { type: 'reset' } | { type: 'config'; config: Config };
@@ -127,7 +128,7 @@ function Sequence({ machine }: { machine: Machine }) {
   const remaining = machine.queue.filter(s => s.spot === spot).length;
   const doneCount = step ? steps.length - remaining : machine.done[spot] ? steps.length : 0;
   return <section className="panel sequence">
-    <div className="panel-heading"><h2><span className="section-number">04</span> Cycle at spot {spot + 1}</h2><span className="micro">REAL DURATIONS · NO ELECTROCHEMISTRY SIMULATED</span></div>
+    <div className="panel-heading"><h2><span className="section-number">05</span> Cycle at spot {spot + 1}</h2><span className="micro">REAL DURATIONS · NO ELECTROCHEMISTRY SIMULATED</span></div>
     <ol className="timeline" style={{ gridTemplateColumns: `repeat(${steps.length},1fr)` }}>{steps.map((s, i) => <li key={i} className={`${i < doneCount ? 'done' : ''} ${step && i === doneCount ? 'active' : ''}`}><span>{i < doneCount ? '✓' : String(i + 1).padStart(2, '0')}</span><b>{s.name}</b><small>{formatTime(s.seconds)}</small></li>)}</ol>
     {step && <div className="sequence-progress"><i style={{ width: `${machine.elapsed / step.seconds * 100}%` }}/></div>}
     <div className="log-block"><div><h3>Log</h3><p className="footnote">One deterministic clock drives the 3D model, the diagram and the state.</p></div><ol aria-live="polite">{machine.log.slice(-5).map((line, i) => <li key={`${machine.log.length}-${i}`}><span>{String(Math.max(0, machine.log.length - 5) + i + 1).padStart(2, '0')}</span>{line}</li>)}</ol></div>
@@ -172,6 +173,7 @@ export default function Platform() {
     </div>
     <Schematic machine={machine}/>
     <Mounting machine={machine}/>
+    <Control machine={machine}/>
     <Sequence machine={machine}/>
     <footer><p><b>{d.name}</b> · Ø{d.cell.chamberD} mm chamber, {d.cell.liquidHeight} mm liquid height, ≈{d.cell.area} cm² working area per spot.</p><p>Idealized sequence for layout discussion. No flow, mixing or electrochemistry is simulated.</p></footer>
   </main>;
